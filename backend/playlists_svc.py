@@ -13,6 +13,37 @@ from validators import require_code, require_playlist_status, require_positive_i
 router = APIRouter(prefix="/api/playlists", tags=["playlists"])
 
 
+def kick_asset_items(conn, asset_id: int) -> list[dict]:
+    """signboard-07 甲路径联剔：把某素材从所有清单条目中踢出。
+
+    不自行 commit——由素材退役主票统一提交；联剔抛错则主票整体回滚。
+    返回被踢条目的快照（清单 id/code、seq），供变更历史逐清单留痕。
+    """
+    kicked = rows_to_list(
+        conn.execute(
+            """
+            SELECT i.id, i.playlist_id, i.seq, p.code playlist_code
+            FROM playlist_items i JOIN playlists p ON p.id=i.playlist_id
+            WHERE i.asset_id=?
+            ORDER BY i.playlist_id, i.seq
+            """,
+            (asset_id,),
+        ).fetchall()
+    )
+    conn.execute("DELETE FROM playlist_items WHERE asset_id=?", (asset_id,))
+    return kicked
+
+
+def assert_playlist_has_items(conn, playlist_id: int) -> None:
+    """发布/置可播前的实账闸：清单条目为空则拒绝（退役联剔可能清空清单）。"""
+    cnt = conn.execute(
+        "SELECT COUNT(*) c FROM playlist_items WHERE playlist_id=?",
+        (playlist_id,),
+    ).fetchone()["c"]
+    if cnt < 1:
+        raise HTTPException(409, "空清单不可发布上屏（条目已被退役联剔清空）")
+
+
 @router.get("")
 def list_playlists(authorization: str | None = Header(default=None)):
     current_user(authorization)
@@ -109,12 +140,7 @@ def patch_playlist(playlist_id: int, body: dict, authorization: str | None = Hea
         title = require_title(body.get("title", pl["title"]), "清单标题")
         transition = require_transition(body.get("transition", pl["transition"]))
         if status == "ready":
-            cnt = conn.execute(
-                "SELECT COUNT(*) c FROM playlist_items WHERE playlist_id=?",
-                (playlist_id,),
-            ).fetchone()["c"]
-            if cnt < 1:
-                raise HTTPException(409, "空清单不可置为可播")
+            assert_playlist_has_items(conn, playlist_id)
         conn.execute(
             "UPDATE playlists SET title=?, status=?, transition=? WHERE id=?",
             (title, status, transition, playlist_id),

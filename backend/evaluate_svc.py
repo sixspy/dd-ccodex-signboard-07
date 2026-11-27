@@ -37,11 +37,21 @@ def evaluate_screen(body: dict, authorization: str | None = Header(default=None)
                 result["play"] = None
             elif ov["effect"] == "force_asset" and ov["asset_id"]:
                 asset = conn.execute("SELECT * FROM assets WHERE id=?", (ov["asset_id"],)).fetchone()
-                result["play"] = {"kind": "asset", "asset": dict(asset) if asset else None}
+                if not asset or asset["status"] == "retired":
+                    # signboard-07：退役素材不得借覆盖通道上屏（防假绿）
+                    result["play"] = None
+                    result["reason"] = "覆盖素材已退役，停止播出"
+                else:
+                    result["play"] = {"kind": "asset", "asset": dict(asset)}
             elif ov["effect"] == "force_playlist" and ov["playlist_id"]:
                 items = rows_to_list(
                     conn.execute(
-                        "SELECT * FROM playlist_items WHERE playlist_id=? ORDER BY seq",
+                        """
+                        SELECT i.*, a.code asset_code, a.title asset_title, a.kind, a.status
+                        FROM playlist_items i JOIN assets a ON a.id=i.asset_id
+                        WHERE i.playlist_id=? AND a.status!='retired'
+                        ORDER BY i.seq
+                        """,
                         (ov["playlist_id"],),
                     ).fetchall()
                 )
@@ -64,9 +74,10 @@ def evaluate_screen(body: dict, authorization: str | None = Header(default=None)
         items = rows_to_list(
             conn.execute(
                 """
-                SELECT i.*, a.code asset_code, a.title asset_title, a.kind
+                SELECT i.*, a.code asset_code, a.title asset_title, a.kind, a.status
                 FROM playlist_items i JOIN assets a ON a.id=i.asset_id
-                WHERE i.playlist_id=? ORDER BY i.seq
+                WHERE i.playlist_id=? AND a.status!='retired'
+                ORDER BY i.seq
                 """,
                 (pub["playlist_id"],),
             ).fetchall()

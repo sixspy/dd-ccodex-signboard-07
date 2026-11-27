@@ -8,6 +8,7 @@ from audit_svc import write_audit, write_history
 from auth import current_user, require_writer
 from db import connect, rows_to_list
 from locks import acquire, release
+from playlists_svc import assert_playlist_has_items
 from policies import assert_playlist_ready, assert_screen_online, assert_window_open
 from validators import require_positive_int, require_title
 
@@ -63,6 +64,8 @@ def _load_refs(conn, screen_id, playlist_id, window_id):
     assert_screen_online(screen["status"])
     assert_playlist_ready(playlist["status"])
     assert_window_open(window["status"])
+    # signboard-07：状态 ready 不代表条目还在——退役联剔可能已清空清单，按实账再闸一次
+    assert_playlist_has_items(conn, playlist_id)
     return screen, playlist, window
 
 

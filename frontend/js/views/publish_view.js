@@ -5,7 +5,7 @@ window.SB_VIEWS["publish-view"] = {
     <div>
       <div class="panel">
         <h2>发布上屏</h2>
-        <p class="lead">甲：正式事务直写；乙：影子草案再升正。两边不得混用。</p>
+        <p class="lead">甲：正式事务直写；乙：影子草案再升正。两边不得混用。清单条目若被退役联剔清空，发布实账闸将拒绝上屏。</p>
         <div class="row-form">
           <input v-model.number="form.screen_id" type="number" placeholder="屏幕ID" />
           <input v-model.number="form.playlist_id" type="number" placeholder="清单ID" />
